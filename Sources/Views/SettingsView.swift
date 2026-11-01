@@ -54,13 +54,24 @@ struct SettingsView: View {
                 }
 
                 Section("朗读") {
-                    Picker("音色", selection: Binding(
-                        get: { store.settings.ttsVoiceID },
-                        set: { store.settings.ttsVoiceID = $0; store.saveSettings() }
+                    Picker("朗读引擎", selection: Binding(
+                        get: { store.settings.ttsEngineID },
+                        set: { store.settings.ttsEngineID = $0; store.saveSettings() }
                     )) {
-                        Text("系统默认").tag("")
-                        ForEach(TTSEngine.shared.availableVoices, id: \.id) { v in
-                            Text(v.name).tag(v.id)
+                        Text("系统 TTS").tag("")
+                        ForEach(store.settings.customTTS) { e in
+                            Text(e.name).tag(e.id)
+                        }
+                    }
+                    if store.settings.ttsEngineID.isEmpty {
+                        Picker("音色", selection: Binding(
+                            get: { store.settings.ttsVoiceID },
+                            set: { store.settings.ttsVoiceID = $0; store.saveSettings() }
+                        )) {
+                            Text("系统默认").tag("")
+                            ForEach(TTSEngine.shared.availableVoices, id: \.id) { v in
+                                Text(v.name).tag(v.id)
+                            }
                         }
                     }
                     HStack {
@@ -74,6 +85,8 @@ struct SettingsView: View {
                         get: { store.settings.ttsAutoNextChapter },
                         set: { store.settings.ttsAutoNextChapter = $0; store.saveSettings() }
                     ))
+                    NavigationLink("自定义朗读引擎") { CustomTTSView() }
+                        .environmentObject(store)
                 }
 
                 Section("存储") {
@@ -129,6 +142,131 @@ struct SettingsView: View {
         let f = ByteCountFormatter()
         f.countStyle = .file
         cacheText = f.string(fromByteCount: bytes)
+    }
+}
+
+struct CustomTTSView: View {
+    @EnvironmentObject var store: AppStore
+    @State private var showAdd = false
+    @State private var editing: CustomTTSEngine?
+
+    var body: some View {
+        List {
+            Section {
+                if store.settings.customTTS.isEmpty {
+                    Text("还没有自定义引擎。添加一个返回音频（mp3 / wav）的 TTS 服务地址即可。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(store.settings.customTTS) { e in
+                    Button {
+                        editing = e
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(e.name).font(.system(size: 15, weight: .medium))
+                            Text(e.url).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+                .onDelete { idx in
+                    store.settings.customTTS.remove(atOffsets: idx)
+                    store.saveSettings()
+                }
+            } header: {
+                Text("已添加 \(store.settings.customTTS.count) 个")
+            } footer: {
+                Text("请求地址用 {text} 放朗读文本、{voice} 放音色。GET 模式直接替换进 URL；POST 模式会发送 JSON {text, voice, rate}。")
+            }
+
+            Section {
+                Button {
+                    showAdd = true
+                } label: {
+                    Label("添加自定义引擎", systemImage: "plus")
+                }
+            }
+        }
+        .navigationTitle("自定义朗读引擎")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showAdd) {
+            CustomTTSEditSheet(engine: nil) { engine in
+                store.settings.customTTS.append(engine)
+                store.saveSettings()
+            }
+        }
+        .sheet(item: $editing) { e in
+            CustomTTSEditSheet(engine: e) { updated in
+                if let i = store.settings.customTTS.firstIndex(where: { $0.id == updated.id }) {
+                    store.settings.customTTS[i] = updated
+                    store.saveSettings()
+                }
+            }
+        }
+    }
+}
+
+struct CustomTTSEditSheet: View {
+    let engine: CustomTTSEngine?
+    let onSave: (CustomTTSEngine) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var url = ""
+    @State private var voice = ""
+    @State private var isPOST = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("引擎") {
+                    TextField("名称（如：Edge TTS）", text: $name)
+                    TextField("请求地址", text: $url)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("音色（可选）", text: $voice)
+                        .textInputAutocapitalization(.never)
+                    Picker("请求方式", selection: $isPOST) {
+                        Text("GET（URL 占位）").tag(false)
+                        Text("POST（JSON body）").tag(true)
+                    }
+                }
+                Section {
+                    Text("示例：https://tts.example.com/api?text={text}&voice={voice}")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(engine == nil ? "添加引擎" : "编辑引擎")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if let e = engine {
+                    name = e.name
+                    url = e.url
+                    voice = e.voice
+                    isPOST = e.method == "POST"
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        onSave(CustomTTSEngine(
+                            id: engine?.id ?? UUID().uuidString,
+                            name: name.trimmingCharacters(in: .whitespaces),
+                            url: url.trimmingCharacters(in: .whitespaces),
+                            voice: voice.trimmingCharacters(in: .whitespaces),
+                            method: isPOST ? "POST" : "GET"
+                        ))
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                              || url.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
