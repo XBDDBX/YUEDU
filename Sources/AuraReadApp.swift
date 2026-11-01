@@ -25,19 +25,15 @@ struct RootView: View {
                     .tabItem { Label("找书", systemImage: "magnifyingglass") }
                     .tag(1)
 
-                SourceListView()
-                    .tabItem { Label("书源", systemImage: "antenna.radiowaves.left.and.right") }
-                    .tag(2)
-
                 DiscoverView()
                     .tabItem { Label("发现", systemImage: "square.grid.2x2") }
-                    .tag(3)
+                    .tag(2)
 
                 SettingsView()
                     .tabItem { Label("设置", systemImage: "gearshape") }
-                    .tag(4)
+                    .tag(3)
             }
-            .tint(Color.accentColor)
+            .tint(.blue)
 
             if let t = store.toast {
                 VStack {
