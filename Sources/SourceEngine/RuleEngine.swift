@@ -246,8 +246,7 @@ enum RuleEngine {
 
 // MARK: - 正则
 
-enum RegexTool {
-    static func replace(_ input: String, pattern: String, template: String) -> String {
+enum RegexTool {    static func replace(_ input: String, pattern: String, template: String) -> String {
         guard !pattern.isEmpty else { return input }
         if pattern.hasPrefix(":") || pattern.hasPrefix("##") { return input }
         guard let re = try? NSRegularExpression(pattern: pattern, options: []) else { return input }
@@ -350,6 +349,44 @@ enum JSONQuery {
             default: return []
             }
         }
+    }
+}
+
+// MARK: - JSON 便捷工具（JS 书源 / JSON 响应场景）
+
+extension JSONQuery {
+    /// 从 JSON 文本直接按路径取值
+    static func evalString(path: String, jsonText: String) -> [String] {
+        guard let data = jsonText.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        return eval(path: path, json: obj)
+    }
+
+    /// 从字典/数组取值（单个元素的规则）
+    static func value(path: String, json: Any) -> String {
+        eval(path: path, json: json).first ?? ""
+    }
+}
+
+/// `{{$.field}}` 模板展开：把文本里的 {{path}} 依次用 JSONPath 取值拼接
+enum TemplateTool {
+    static func expand(_ text: String, json: Any) -> String {
+        var out = text
+        let pattern = #"\{\{([^}]+)\}\}"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return text }
+        let ns = NSRange(out.startIndex..<out.endIndex, in: out)
+        var results: [(NSRange, String)] = []
+        for m in re.matches(in: out, range: ns) {
+            if m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: out) {
+                let path = String(out[r]).trimmingCharacters(in: .whitespaces)
+                let v = JSONQuery.value(path: path, json: json)
+                results.append((m.range, v))
+            }
+        }
+        for (range, value) in results.reversed() {
+            if let r = Range(range, in: out) { out.replaceSubrange(r, with: value) }
+        }
+        return out
     }
 }
 

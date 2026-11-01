@@ -6,6 +6,8 @@ enum FetchError: LocalizedError {
     case http(Int)
     case empty
     case decode
+    case timeout
+    case network
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +15,8 @@ enum FetchError: LocalizedError {
         case .http(let code): return "服务器返回 \(code)"
         case .empty: return "内容为空"
         case .decode: return "页面解码失败"
+        case .timeout: return "请求超时（站点慢或需登录，可在书源里配置 header/登录）"
+        case .network: return "网络连接失败"
         }
     }
 }
@@ -20,7 +24,7 @@ enum FetchError: LocalizedError {
 enum SourceFetcher {
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
 
-    private static let session: URLSession = {
+    static let session: URLSession = {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 20
         cfg.timeoutIntervalForResource = 35
@@ -42,12 +46,19 @@ enum SourceFetcher {
             req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         }
 
-        let (data, resp) = try await session.data(for: req)
-        if let http = resp as? HTTPURLResponse, !(200...399).contains(http.statusCode) {
-            throw FetchError.http(http.statusCode)
+        do {
+            let (data, resp) = try await session.data(for: req)
+            if let http = resp as? HTTPURLResponse, !(200...399).contains(http.statusCode) {
+                throw FetchError.http(http.statusCode)
+            }
+            if data.isEmpty { throw FetchError.empty }
+            return data
+        } catch let e as FetchError {
+            throw e
+        } catch let e as URLError {
+            if e.code == .timedOut { throw FetchError.timeout }
+            throw FetchError.network
         }
-        if data.isEmpty { throw FetchError.empty }
-        return data
     }
 
     static func html(_ urlString: String, headers: [String: String] = [:]) async throws -> Document {
