@@ -257,7 +257,7 @@ struct SourceLoginSheet: View {
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
-                Section("账号") {
+                Section {
                     TextField("邮箱", text: $email)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -268,6 +268,8 @@ struct SourceLoginSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
+                } header: {
+                    Text("账号")
                 } footer: {
                     Text("与「阅读」App 书源登录一致：填邮箱 / 密码 / 密钥后点登录，成功会自动保存 cookie。")
                 }
