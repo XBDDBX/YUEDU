@@ -64,8 +64,52 @@ struct ReaderSettings: Codable, Hashable, Sendable {
     var ttsPitch: Double = 1.0
     var ttsVoiceID: String = ""
     var ttsAutoNextChapter: Bool = true
+    // 自定义朗读引擎（"" = 用系统 TTS）
+    var ttsEngineID: String = ""
+    var customTTS: [CustomTTSEngine] = []
 
     var theme: ReaderTheme { ReaderTheme.all[min(max(themeIndex, 0), ReaderTheme.all.count - 1)] }
+}
+
+/// 自定义朗读引擎：请求一个返回音频（mp3/wav）的 TTS 服务
+struct CustomTTSEngine: Codable, Hashable, Identifiable {
+    var id: String = UUID().uuidString
+    var name: String = ""
+    var url: String = ""          // 支持 {text} / {voice} 占位
+    var voice: String = ""
+    var method: String = "GET"    // GET（URL 占位）或 POST（JSON body）
+}
+
+// MARK: - 兼容解码：新字段缺省时用默认值，避免旧存档解码失败
+
+extension ReaderSettings {
+    private enum CodingKeys: String, CodingKey {
+        case fontSize, lineSpacing, paragraphSpacing, fontFamily, themeIndex,
+             marginH, marginV, pageAnimate,
+             ttsRate, ttsPitch, ttsVoiceID, ttsAutoNextChapter,
+             ttsEngineID, customTTS
+    }
+
+    /// 有自定义 init(from:) 后默认构造会被抑制，这里显式恢复（AppStore 依赖它）
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? 19
+        lineSpacing = try c.decodeIfPresent(Double.self, forKey: .lineSpacing) ?? 8
+        paragraphSpacing = try c.decodeIfPresent(Double.self, forKey: .paragraphSpacing) ?? 12
+        fontFamily = try c.decodeIfPresent(String.self, forKey: .fontFamily) ?? "system"
+        themeIndex = try c.decodeIfPresent(Int.self, forKey: .themeIndex) ?? 0
+        marginH = try c.decodeIfPresent(Double.self, forKey: .marginH) ?? 20
+        marginV = try c.decodeIfPresent(Double.self, forKey: .marginV) ?? 16
+        pageAnimate = try c.decodeIfPresent(Bool.self, forKey: .pageAnimate) ?? true
+        ttsRate = try c.decodeIfPresent(Double.self, forKey: .ttsRate) ?? 0.5
+        ttsPitch = try c.decodeIfPresent(Double.self, forKey: .ttsPitch) ?? 1.0
+        ttsVoiceID = try c.decodeIfPresent(String.self, forKey: .ttsVoiceID) ?? ""
+        ttsAutoNextChapter = try c.decodeIfPresent(Bool.self, forKey: .ttsAutoNextChapter) ?? true
+        ttsEngineID = try c.decodeIfPresent(String.self, forKey: .ttsEngineID) ?? ""
+        customTTS = try c.decodeIfPresent([CustomTTSEngine].self, forKey: .customTTS) ?? []
+    }
 }
 
 struct ReaderTheme: Hashable {

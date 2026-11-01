@@ -13,10 +13,17 @@ struct BookSource: Identifiable, Codable, Hashable, Sendable {
     var searchUrl: String = ""
     var header: String = ""
 
+    // legado 高级字段：发现页 / JS 运行时 / 登录
+    var exploreUrl: String = ""
+    var jsLib: String = ""
+    var loginUrl: String = ""
+    var loginUi: String = ""
+
     var ruleSearch: SearchRule = SearchRule()
     var ruleDetail: DetailRule = DetailRule()
     var ruleToc: TocRule = TocRule()
     var ruleContent: ContentRule = ContentRule()
+    var ruleExplore: ExploreRule = ExploreRule()
 
     /// 排序用
     var order: Int = 0
@@ -59,6 +66,19 @@ struct BookSource: Identifiable, Codable, Hashable, Sendable {
         var content: String = ""
         var nextContentUrl: String = ""
         var title: String = ""
+    }
+
+    /// legado 发现页（explore）规则
+    struct ExploreRule: Codable, Hashable, Sendable {
+        var bookList: String = ""
+        var name: String = ""
+        var author: String = ""
+        var kind: String = ""
+        var wordCount: String = ""
+        var lastChapter: String = ""
+        var intro: String = ""
+        var coverUrl: String = ""
+        var bookUrl: String = ""
     }
 }
 
@@ -110,6 +130,10 @@ extension BookSource {
         self.comment = Flex.str(json["bookSourceComment"])
         self.searchUrl = Flex.str(json["searchUrl"])
         self.header = Flex.str(json["header"])
+        self.exploreUrl = Flex.str(json["exploreUrl"])
+        self.jsLib = Flex.str(json["jsLib"])
+        self.loginUrl = Flex.str(json["loginUrl"])
+        self.loginUi = Flex.str(json["loginUi"])
 
         let rs = Flex.dict(json["ruleSearch"])
         self.ruleSearch = SearchRule(
@@ -153,6 +177,19 @@ extension BookSource {
             content: Flex.str(rc["content"]),
             nextContentUrl: Flex.str(rc["nextContentUrl"]),
             title: Flex.str(rc["title"])
+        )
+
+        let re = Flex.dict(json["ruleExplore"])
+        self.ruleExplore = ExploreRule(
+            bookList: Flex.str(re["bookList"]),
+            name: Flex.str(re["name"]),
+            author: Flex.str(re["author"]),
+            kind: Flex.str(re["kind"]),
+            wordCount: Flex.str(re["wordCount"]),
+            lastChapter: Flex.str(re["lastChapter"]),
+            intro: Flex.str(re["intro"]),
+            coverUrl: Flex.str(re["coverUrl"]),
+            bookUrl: Flex.str(re["bookUrl"])
         )
     }
 
