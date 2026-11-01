@@ -10,6 +10,19 @@ final class AppStore: ObservableObject {
     @Published var settings = ReaderSettings()
     @Published var toast: String? = nil
 
+    /// 书源运行时状态：变量 / 登录信息 / cookie（供 JSBridge 使用）
+    struct SourceState: Codable {
+        var variables: [String: String] = [:]     // sourceID -> 变量 JSON
+        var loginInfo: [String: String] = [:]     // sourceID -> 登录信息 JSON
+        var cookies: [String: String] = [:]       // host -> cookie 串
+        var deviceID: String = ""
+    }
+
+    @Published private(set) var sourceState = SourceState()
+
+    /// JS 运行时跨上下文暂存（java.put / java.get），内存级即可
+    @Published var jsScratch: [String: String] = [:]
+
     private let root: URL
     private let cacheDir: URL
 
@@ -27,6 +40,7 @@ final class AppStore: ObservableObject {
     private var sourcesFile: URL { root.appendingPathComponent("sources.json") }
     private var booksFile: URL { root.appendingPathComponent("books.json") }
     private var settingsFile: URL { root.appendingPathComponent("settings.json") }
+    private var stateFile: URL { root.appendingPathComponent("state.json") }
 
     func load() {
         let dec = JSONDecoder()
@@ -42,6 +56,23 @@ final class AppStore: ObservableObject {
            let v = try? dec.decode(ReaderSettings.self, from: d) {
             settings = v
         }
+        if let d = try? Data(contentsOf: stateFile),
+           let v = try? dec.decode(SourceState.self, from: d) {
+            sourceState = v
+        }
+        if sourceState.deviceID.isEmpty {
+            sourceState.deviceID = Self.makeDeviceID()
+            saveState()
+        }
+    }
+
+    static func makeDeviceID() -> String {
+        let chars = "0123456789abcdef"
+        return String((0..<16).map { _ in chars.randomElement()! })
+    }
+
+    func saveState() {
+        if let d = try? JSONEncoder().encode(sourceState) { try? d.write(to: stateFile) }
     }
 
     func saveSources() {
@@ -109,6 +140,53 @@ final class AppStore: ObservableObject {
     func source(for id: UUID?) -> BookSource? {
         guard let id else { return nil }
         return sources.first { $0.id == id }
+    }
+
+    /// 支持发现页且启用的书源
+    var explorableSources: [BookSource] {
+        sources.filter { $0.enabled && !$0.exploreUrl.isEmpty }
+    }
+
+    // MARK: - 书源运行时状态（JSBridge 回调）
+
+    func variable(for sourceID: UUID) -> String {
+        sourceState.variables[sourceID.uuidString] ?? ""
+    }
+
+    func setVariable(_ value: String, for sourceID: UUID) {
+        sourceState.variables[sourceID.uuidString] = value
+        saveState()
+    }
+
+    func loginInfo(for sourceID: UUID) -> String {
+        sourceState.loginInfo[sourceID.uuidString] ?? "{}"
+    }
+
+    func setLoginInfo(_ value: String, for sourceID: UUID) {
+        sourceState.loginInfo[sourceID.uuidString] = value
+        saveState()
+    }
+
+    func cookie(for host: String) -> String {
+        sourceState.cookies[Self.cookieKey(host)] ?? ""
+    }
+
+    func setCookie(_ value: String, for host: String) {
+        sourceState.cookies[Self.cookieKey(host)] = value
+        saveState()
+    }
+
+    func removeCookie(for host: String) {
+        sourceState.cookies.removeValue(forKey: Self.cookieKey(host))
+        saveState()
+    }
+
+    /// cookie 以 host 主域为键，忽略协议与路径差异
+    static func cookieKey(_ host: String) -> String {
+        var h = host
+        if let u = URL(string: h), let hostPart = u.host { h = hostPart }
+        if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
+        return h
     }
 
     // MARK: - 书架
