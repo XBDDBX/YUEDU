@@ -37,6 +37,23 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+          APP_PATH="build/Build/Products/Release-iphoneos/AuraRead.app"
+          test -d "$APP_PATH" || { echo "Build product not found"; exit 1; }
+
+          # 确保 asset catalog（AppIcon）被编译进 app
+          if [ -d "Resources/Assets.xcassets" ]; then
+            echo "Compiling asset catalog..."
+            xcrun actool Resources/Assets.xcassets \
+              --compile "$APP_PATH" \
+              --platform iphoneos \
+              --minimum-deployment-target 17.0 \
+              --app-icon AppIcon \
+              --output-partial-info-plist /tmp/actool-partial.plist
+            /usr/libexec/PlistBuddy -c "Merge /tmp/actool-partial.plist" "$APP_PATH/Info.plist" 2>/dev/null || true
+            echo "--- app contents after actool ---"
+            ls -la "$APP_PATH"
+          fi
+
       - name: Package into unsigned IPA
         run: |
           APP_PATH="build/Build/Products/Release-iphoneos/AuraRead.app"
