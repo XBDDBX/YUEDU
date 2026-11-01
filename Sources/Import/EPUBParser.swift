@@ -182,7 +182,8 @@ enum EPUBParser {
         try? doc.select("script, style, nav, svg").remove()
         guard let body = doc.body() else { return ContentCleaner.clean(html) }
         var blocks: [String] = []
-        for el in body.getAllElements().array() {
+        let allElements = (try? body.getAllElements().array()) ?? []
+        for el in allElements {
             let tagName = el.tagName().lowercased()
             guard ["p", "div", "h1", "h2", "h3", "h4", "li", "blockquote", "br"].contains(tagName) else { continue }
             if let t = try? el.ownText() {
