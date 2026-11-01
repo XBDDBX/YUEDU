@@ -67,7 +67,7 @@ final class PageRenderView: UIView {
         CTFrameGetLineOrigins(frame, CFRangeMake(0, 0), &origins)
 
         for i in 0..<lines.count {
-            guard let line = lines[i] as? CTLine else { continue }
+            let line = lines[i] as! CTLine
             let lineRange = CTLineGetStringRange(line)
             let s = max(lineRange.location, localRange.location)
             let e = min(lineRange.location + lineRange.length, NSMaxRange(localRange))
