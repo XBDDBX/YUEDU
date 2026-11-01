@@ -1,13 +1,95 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var store: AppStore
     @State private var cacheText = "—"
     @State private var showReset = false
+    // 书源导入 / 登录
+    @State private var showImportURL = false
+    @State private var showImporter = false
+    @State private var urlText = ""
+    @State private var alertText: String?
+    @State private var loginSource: BookSource?
+    @State private var editing: BookSource?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("书源") {
+                    if store.sources.isEmpty {
+                        Text("还没有书源，用下方按钮导入").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    ForEach(store.sources) { s in
+                        HStack(alignment: .top, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(s.name).font(.system(size: 15, weight: .medium)).lineLimit(1)
+                                Text(s.url).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if !s.loginUrl.isEmpty {
+                                Button {
+                                    loginSource = s
+                                } label: {
+                                    Image(systemName: store.sourceHasAccount(s) ? "person.fill.checkmark" : "person.badge.key")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(store.sourceHasAccount(s) ? .green : .secondary)
+                                }
+                            }
+                            Toggle("", isOn: Binding(
+                                get: { s.enabled },
+                                set: { _ in store.toggleSource(s) }
+                            ))
+                            .labelsHidden()
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = s }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if store.sourceHasAccount(s) {
+                                Button(role: .destructive) {
+                                    store.clearSourceAccount(s)
+                                    store.show("已清除「\(s.name)」账号信息")
+                                } label: {
+                                    Label("清除账号", systemImage: "person.crop.circle.badge.xmark")
+                                }
+                            }
+                            Button(role: .destructive) {
+                                store.deleteSource(s)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
+                    }
+                    NavigationLink("书源管理（编辑 / 测试 / 批量导入）") {
+                        SourceListView()
+                            .environmentObject(store)
+                    }
+                } header: {
+                    Text("书源 · \(store.sources.count) 个 · 启用 \(store.enabledSources.count) 个")
+                } footer: {
+                    Text("点击书源可编辑规则；支持 legado / 阅读 3.0 书源 JSON 导入。")
+                }
+
+                Section("导入") {
+                    Button {
+                        Task { await importFromClipboard() }
+                    } label: {
+                        Label("从剪贴板导入", systemImage: "doc.on.clipboard")
+                    }
+                    Button {
+                        showImportURL = true
+                    } label: {
+                        Label("从链接导入", systemImage: "link")
+                    }
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("从文件导入（可多选）", systemImage: "folder")
+                    }
+                } footer: {
+                    Text("网上搜到的书源合集 JSON 可直接导入。")
+                }
+
                 Section("外观") {
                     Picker("主题", selection: Binding(
                         get: { store.settings.themeIndex },
@@ -134,6 +216,104 @@ struct SettingsView: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+            .sheet(item: $editing) { s in
+                SourceEditView(source: s)
+                    .environmentObject(store)
+            }
+            .sheet(item: $loginSource) { s in
+                SourceLoginSheet(source: s)
+                    .environmentObject(store)
+            }
+            .sheet(isPresented: $showImportURL) {
+                NavigationStack {
+                    Form {
+                        Section("书源链接") {
+                            TextField("https://…/booksource.json", text: $urlText)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                        }
+                    }
+                    .navigationTitle("从链接导入")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("取消") { showImportURL = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("导入") {
+                                let u = urlText
+                                showImportURL = false
+                                Task { await importFromURL(u) }
+                            }
+                            .disabled(urlText.isEmpty)
+                        }
+                    }
+                }
+                .presentationDetents([.height(220)])
+            }
+            .fileImporter(isPresented: $showImporter,
+                          allowedContentTypes: [.json, .plainText, .data, .text],
+                          allowsMultipleSelection: true) { result in
+                if case .success(let urls) = result {
+                    var total = 0
+                    for u in urls {
+                        let scoped = u.startAccessingSecurityScopedResource()
+                        defer { if scoped { u.stopAccessingSecurityScopedResource() } }
+                        if let d = try? Data(contentsOf: u) {
+                            total += store.importSources(from: d)
+                        }
+                    }
+                    if total > 0 {
+                        alertText = "导入了 \(total) 个书源"
+                        checkCapabilityHints()
+                    } else {
+                        alertText = "没有识别到有效书源，请确认文件是 bookSource JSON 合集"
+                    }
+                }
+            }
+            .alert("提示", isPresented: Binding(
+                get: { alertText != nil },
+                set: { if !$0 { alertText = nil } }
+            )) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(alertText ?? "")
+            }
+        }
+    }
+
+    private func importFromClipboard() async {
+        guard let text = UIPasteboard.general.string, let d = text.data(using: .utf8) else {
+            alertText = "剪贴板里没有内容"
+            return
+        }
+        let n = store.importSources(from: d)
+        alertText = n > 0 ? "导入了 \(n) 个书源" : "没识别到有效书源，确认是 bookSource JSON"
+        if n > 0 { checkCapabilityHints() }
+    }
+
+    private func importFromURL(_ url: String) async {
+        do {
+            let n = try await store.importSources(from: url)
+            alertText = n > 0 ? "导入了 \(n) 个书源" : "没识别到有效书源"
+            if n > 0 { checkCapabilityHints() }
+        } catch {
+            alertText = "拉取失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 导入包含 JS / 登录 / 发现页能力的书源时给出提示
+    private func checkCapabilityHints() {
+        let jsCount = store.sources.filter { !$0.jsLib.isEmpty || $0.searchUrl.hasPrefix("<js>") }.count
+        let loginCount = store.sources.filter { !$0.loginUrl.isEmpty }.count
+        let exploreCount = store.sources.filter { !$0.exploreUrl.isEmpty }.count
+        var hints: [String] = []
+        if jsCount > 0 { hints.append("\(jsCount) 个为 JS 引擎书源（需真机验证）") }
+        if loginCount > 0 { hints.append("\(loginCount) 个支持登录，点击行内钥匙图标登录") }
+        if exploreCount > 0 { hints.append("\(exploreCount) 个支持发现页，已加入「发现」页") }
+        if !hints.isEmpty {
+            alertText = "导入完成。" + hints.joined(separator: "；")
         }
     }
 
@@ -149,12 +329,14 @@ struct CustomTTSView: View {
     @EnvironmentObject var store: AppStore
     @State private var showAdd = false
     @State private var editing: CustomTTSEngine?
+    @State private var showImporter = false
+    @State private var alertText: String?
 
     var body: some View {
         List {
             Section {
                 if store.settings.customTTS.isEmpty {
-                    Text("还没有自定义引擎。添加一个返回音频（mp3 / wav）的 TTS 服务地址即可。")
+                    Text("还没有自定义引擎。可以手填一个返回音频（mp3 / wav）的 TTS 服务地址，或像导入书源一样从文件 / 剪贴板导入。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 ForEach(store.settings.customTTS) { e in
@@ -163,7 +345,7 @@ struct CustomTTSView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(e.name).font(.system(size: 15, weight: .medium))
-                            Text(e.url).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            Text(e.url.isEmpty ? "（未配置请求地址）" : e.url).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                     .foregroundStyle(.primary)
@@ -182,8 +364,23 @@ struct CustomTTSView: View {
                 Button {
                     showAdd = true
                 } label: {
-                    Label("添加自定义引擎", systemImage: "plus")
+                    Label("手动添加引擎", systemImage: "plus")
                 }
+            }
+
+            Section("导入") {
+                Button {
+                    showImporter = true
+                } label: {
+                    Label("从文件导入（JSON）", systemImage: "folder")
+                }
+                Button {
+                    importFromClipboard()
+                } label: {
+                    Label("从剪贴板导入", systemImage: "doc.on.clipboard")
+                }
+            } footer: {
+                Text("支持导入 TTS 引擎 JSON：数组 [{name,url,voice,method}]，或含 ttsEngines / tts_engines 字段的对象，缺 url 的条目会跳过。")
             }
         }
         .navigationTitle("自定义朗读引擎")
@@ -201,6 +398,76 @@ struct CustomTTSView: View {
                     store.saveSettings()
                 }
             }
+        }
+        .fileImporter(isPresented: $showImporter,
+                      allowedContentTypes: [.json, .plainText, .data, .text],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let u = urls.first {
+                let scoped = u.startAccessingSecurityScopedResource()
+                defer { if scoped { u.stopAccessingSecurityScopedResource() } }
+                if let d = try? Data(contentsOf: u) {
+                    importFromData(d)
+                }
+            }
+        }
+        .alert("提示", isPresented: Binding(
+            get: { alertText != nil },
+            set: { if !$0 { alertText = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(alertText ?? "")
+        }
+    }
+
+    private func importFromClipboard() {
+        guard let text = UIPasteboard.general.string, let d = text.data(using: .utf8) else {
+            alertText = "剪贴板里没有内容"
+            return
+        }
+        importFromData(d)
+    }
+
+    /// 解析 TTS 引擎 JSON 并追加到设置（数组 / ttsEngines 字段 / 单对象）
+    private func importFromData(_ data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) else {
+            alertText = "不是有效 JSON"
+            return
+        }
+        var list: [[String: Any]] = []
+        if let arr = obj as? [[String: Any]] {
+            list = arr
+        } else if let dict = obj as? [String: Any] {
+            if let arr = dict["ttsEngines"] as? [[String: Any]] {
+                list = arr
+            } else if let arr = dict["tts_engines"] as? [[String: Any]] {
+                list = arr
+            } else {
+                list = [dict]
+            }
+        }
+        var added = 0
+        for item in list {
+            let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let url = (item["url"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let voice = (item["voice"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let method = (item["method"] as? String) == "POST" ? "POST" : "GET"
+            guard !name.isEmpty else { continue }
+            store.settings.customTTS.append(CustomTTSEngine(
+                id: UUID().uuidString,
+                name: name,
+                url: url,
+                voice: voice,
+                method: method
+            ))
+            added += 1
+        }
+        if added > 0 {
+            store.saveSettings()
+            let noURL = list.count - added
+            alertText = noURL > 0 ? "导入 \(added) 个引擎（\(noURL) 个缺 name/url 已跳过），请点开补齐请求地址" : "导入了 \(added) 个引擎"
+        } else {
+            alertText = "没识别到有效引擎条目（需要 name 字段）"
         }
     }
 }
