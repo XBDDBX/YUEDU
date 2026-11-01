@@ -10,6 +10,9 @@ struct ExploreSection: Identifiable, Hashable {
 }
 
 /// 一次书源请求的上下文
+/// @MainActor：方法内会直接访问 AppStore（@MainActor）做变量/cookie 读写，
+/// 全部请求链路都在主线程串行执行，符合 Swift 6 严格并发。
+@MainActor
 struct SourceService {
     let source: BookSource
 

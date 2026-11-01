@@ -8,8 +8,11 @@ import JavaScriptCore
 /// - 再注入兼容垫片（cookie / java / source / getArgument 等）
 /// - 最后执行书源代码，取**顶层最后一个表达式的值**（与 Rhino 一致）
 ///
-/// java.ajax 等网络调用在后台队列里同步完成（信号量等待 URLSession），
-/// 不阻塞主线程。
+/// java.ajax 等网络调用同步完成（信号量等待 URLSession）。
+/// 整个桥运行在 MainActor：legado 书源代码里对 AppStore 变量/登录/cookie
+/// 的读写必须发生在主线程（AppStore 是 @MainActor），因此 evaluate 不再
+/// 派发到后台队列，直接在主线程同步执行。
+@MainActor
 enum JSBridge {
 
     // MARK: - 对外
@@ -33,19 +36,9 @@ enum JSBridge {
             .replacingOccurrences(of: #"^\s*<js>\s*"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s*</js>\s*$"#, with: "", options: .regularExpression)
 
-        // 已在后台队列 → 同步执行（避免全局队列饥饿）；
-        // 主线程 → 派到后台并等待（不影响 UI）
-        if !Thread.isMainThread {
-            return Self.run(source: source, js: js, result: result, baseUrl: baseUrl, vars: vars)
-        }
-        var out: Any? = nil
-        let sem = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
-            out = Self.run(source: source, js: js, result: result, baseUrl: baseUrl, vars: vars)
-            sem.signal()
-        }
-        _ = sem.wait(timeout: .now() + 60)
-        return out
+        // @MainActor 保证在主线程同步执行（AppStore 访问合法），
+        // 网络同步等待由 syncRequest 的信号量完成，不依赖主线程回调
+        return Self.run(source: source, js: js, result: result, baseUrl: baseUrl, vars: vars)
     }
 
     /// 判断一段规则是否以 `<js>` 开头
