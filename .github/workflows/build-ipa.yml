@@ -1,0 +1,55 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (code signing disabled)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AuraRead.xcodeproj \
+            -scheme AuraRead \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package into unsigned IPA
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/AuraRead.app"
+          test -d "$APP_PATH" || { echo "Build product not found"; exit 1; }
+          rm -rf Payload QingYue-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry QingYue-unsigned.ipa Payload
+          ls -lh QingYue-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: QingYue-unsigned-ipa
+          path: QingYue-unsigned.ipa
+          retention-days: 30
