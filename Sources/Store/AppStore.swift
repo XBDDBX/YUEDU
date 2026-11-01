@@ -167,6 +167,26 @@ final class AppStore: ObservableObject {
         saveState()
     }
 
+    /// 书源是否已登录（保存过账号信息或任一 host 持有 qttoken）
+    func sourceHasAccount(_ source: BookSource) -> Bool {
+        if let li = sourceState.loginInfo[source.id.uuidString], li != "{}", !li.isEmpty { return true }
+        for h in SourceService.hosts(from: source) {
+            let c = cookie(for: h)
+            if c.contains("qttoken=") && !c.contains("qttoken=;") { return true }
+        }
+        return false
+    }
+
+    /// 清除书源账号信息（cookie / 变量 / 登录信息），回到未登录状态
+    func clearSourceAccount(_ source: BookSource) {
+        for h in SourceService.hosts(from: source) {
+            removeCookie(for: h)
+        }
+        sourceState.variables.removeValue(forKey: source.id.uuidString)
+        sourceState.loginInfo.removeValue(forKey: source.id.uuidString)
+        saveState()
+    }
+
     func cookie(for host: String) -> String {
         sourceState.cookies[Self.cookieKey(host)] ?? ""
     }
