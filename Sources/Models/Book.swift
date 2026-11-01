@@ -90,9 +90,6 @@ extension ReaderSettings {
              ttsEngineID, customTTS
     }
 
-    /// 有自定义 init(from:) 后默认构造会被抑制，这里显式恢复（AppStore 依赖它）
-    init() {}
-
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? 19
