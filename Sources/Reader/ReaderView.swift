@@ -134,6 +134,18 @@ struct ReaderView: View {
                     vm.jump(to: idx)
                 }
             }
+            // 左右滑返回书架（与点击翻页/菜单共存）
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard abs(dx) > 110, abs(dx) > abs(dy) else { return }
+                        vm.saveProgress()
+                        TTSEngine.shared.stop()
+                        dismiss()
+                    }
+            )
         }
         .navigationBarHidden(true)
     }
