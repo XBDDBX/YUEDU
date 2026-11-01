@@ -16,7 +16,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("书源") {
+                Section {
                     if store.sources.isEmpty {
                         Text("还没有书源，用下方按钮导入").font(.footnote).foregroundStyle(.secondary)
                     }
@@ -70,7 +70,7 @@ struct SettingsView: View {
                     Text("点击书源可编辑规则；支持 legado / 阅读 3.0 书源 JSON 导入。")
                 }
 
-                Section("导入") {
+                Section {
                     Button {
                         Task { await importFromClipboard() }
                     } label: {
@@ -86,6 +86,8 @@ struct SettingsView: View {
                     } label: {
                         Label("从文件导入（可多选）", systemImage: "folder")
                     }
+                } header: {
+                    Text("导入")
                 } footer: {
                     Text("网上搜到的书源合集 JSON 可直接导入。")
                 }
@@ -368,7 +370,7 @@ struct CustomTTSView: View {
                 }
             }
 
-            Section("导入") {
+            Section {
                 Button {
                     showImporter = true
                 } label: {
@@ -379,6 +381,8 @@ struct CustomTTSView: View {
                 } label: {
                     Label("从剪贴板导入", systemImage: "doc.on.clipboard")
                 }
+            } header: {
+                Text("导入")
             } footer: {
                 Text("支持导入 TTS 引擎 JSON：数组 [{name,url,voice,method}]，或含 ttsEngines / tts_engines 字段的对象，缺 url 的条目会跳过。")
             }
