@@ -11,6 +11,7 @@ struct SourceListView: View {
     @State private var busy = false
     @State private var alertText: String?
     @State private var loginSource: BookSource?
+    @State private var confirmDelete: BookSource?
 
     var body: some View {
         NavigationStack {
@@ -44,9 +45,9 @@ struct SourceListView: View {
                                 Button {
                                     loginSource = s
                                 } label: {
-                                    Image(systemName: SourceService(source: s).cookieHasToken() ? "person.fill.checkmark" : "person.badge.key")
+                                    Image(systemName: store.sourceHasAccount(s) ? "person.fill.checkmark" : "person.badge.key")
                                         .font(.system(size: 15))
-                                        .foregroundStyle(SourceService(source: s).cookieHasToken() ? .green : .secondary)
+                                        .foregroundStyle(store.sourceHasAccount(s) ? .green : .secondary)
                                 }
                             }
                             Toggle("", isOn: Binding(
@@ -57,12 +58,29 @@ struct SourceListView: View {
                         }
                         .contentShape(Rectangle())
                         .onTapGesture { editing = s }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if store.sourceHasAccount(s) {
+                                Button(role: .destructive) {
+                                    store.clearSourceAccount(s)
+                                    alertText = "已清除「\(s.name)」的账号信息"
+                                } label: {
+                                    Label("清除账号", systemImage: "person.crop.circle.badge.xmark")
+                                }
+                            }
+                            Button(role: .destructive) {
+                                confirmDelete = s
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
                     }
                     .onDelete { idx in
                         for i in idx { store.deleteSource(store.sources[i]) }
                     }
                 } header: {
                     Text("已导入 \(store.sources.count) 个 · 启用 \(store.enabledSources.count) 个")
+                } footer: {
+                    Text("点击书源打开规则编辑；左滑可清除账号 / 删除书源。")
                 }
 
                 Section {
@@ -79,12 +97,12 @@ struct SourceListView: View {
                     Button {
                         showImporter = true
                     } label: {
-                        Label("从文件导入", systemImage: "folder")
+                        Label("从文件导入（可多选）", systemImage: "folder")
                     }
                 } header: {
                     Text("导入")
                 } footer: {
-                    Text("书源格式与「阅读」App 通用，网上搜到的书源合集 JSON 可以直接粘进来。")
+                    Text("书源格式与「阅读」App 通用。导入后点击书源即可打开规则编辑，启用后到「找书 / 发现」页使用。")
                 }
             }
             .navigationTitle("书源")
@@ -101,6 +119,19 @@ struct SourceListView: View {
                 Button("好", role: .cancel) {}
             } message: {
                 Text(alertText ?? "")
+            }
+            .confirmationDialog("删除书源「\(confirmDelete?.name ?? "")」？", isPresented: Binding(
+                get: { confirmDelete != nil },
+                set: { if !$0 { confirmDelete = nil } }
+            ), titleVisibility: .visible) {
+                Button("删除", role: .destructive) {
+                    if let s = confirmDelete {
+                        store.deleteSource(s)
+                        alertText = "已删除「\(s.name)」"
+                    }
+                    confirmDelete = nil
+                }
+                Button("取消", role: .cancel) { confirmDelete = nil }
             }
             .sheet(item: $editing) { s in
                 SourceEditView(source: s)
@@ -212,13 +243,19 @@ struct SourceLoginSheet: View {
     @State private var busy = false
     @State private var resultText: String?
 
+    private var hasAccount: Bool { store.sourceHasAccount(source) }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     Text(source.name).font(.system(size: 14, weight: .medium))
-                    Text("登录后该书源会记住状态，搜索 / 发现页直接可用。")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: hasAccount ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(hasAccount ? .green : .secondary)
+                        Text(hasAccount ? "已登录（cookie 已保存）" : "未登录")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
                 }
                 Section("账号") {
                     TextField("邮箱", text: $email)
@@ -231,6 +268,8 @@ struct SourceLoginSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
+                } footer: {
+                    Text("与「阅读」App 书源登录一致：填邮箱 / 密码 / 密钥后点登录，成功会自动保存 cookie。")
                 }
                 Section {
                     Button {
@@ -243,6 +282,14 @@ struct SourceLoginSheet: View {
                         }
                     }
                     .disabled(busy || (email.isEmpty && key.isEmpty))
+                    if hasAccount {
+                        Button(role: .destructive) {
+                            store.clearSourceAccount(source)
+                            resultText = "已清除「\(source.name)」的账号信息"
+                        } label: {
+                            Label("清除账号信息", systemImage: "person.crop.circle.badge.xmark")
+                        }
+                    }
                 }
                 if let resultText {
                     Section {
@@ -258,7 +305,7 @@ struct SourceLoginSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private var keyUsed: Bool { !key.isEmpty }
@@ -274,6 +321,10 @@ struct SourceLoginSheet: View {
                            for: source.id)
         let svc = SourceService(source: source)
         let msg = await svc.login(flag: true)
-        resultText = msg + (svc.cookieHasToken() ? "（已写入 cookie）" : "")
+        if svc.cookieHasToken() {
+            resultText = "登录成功：\(msg)"
+        } else {
+            resultText = "未成功：\(msg)。请确认账号正确，或到「设置 → 书源」左滑清除账号后重试。"
+        }
     }
 }
