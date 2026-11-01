@@ -29,9 +29,13 @@ struct RootView: View {
                     .tabItem { Label("书源", systemImage: "antenna.radiowaves.left.and.right") }
                     .tag(2)
 
+                DiscoverView()
+                    .tabItem { Label("发现", systemImage: "square.grid.2x2") }
+                    .tag(3)
+
                 SettingsView()
                     .tabItem { Label("设置", systemImage: "gearshape") }
-                    .tag(3)
+                    .tag(4)
             }
             .tint(Color.accentColor)
 
