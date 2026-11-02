@@ -59,6 +59,19 @@ struct ReaderSettings: Codable, Hashable, Sendable {
     var marginV: Double = 16
     var pageAnimate: Bool = true
 
+    /// 翻页方式：0 覆盖 1 滑动 2 仿真 3 上下滚动 4 无动画
+    var pageTurnMode: Int = 1
+    /// 双栏排版（横屏 / iPad 有效）
+    var dualColumn: Bool = false
+    /// 首行缩进（单位：字符）
+    var firstLineIndent: Double = 2
+    /// 字距
+    var letterSpacing: Double = 0.2
+    /// 章节预缓存章数（0 关闭）
+    var chapterPreload: Int = 1
+    var showChapterTitle: Bool = true
+    var statsEnabled: Bool = false
+
     // TTS
     var ttsRate: Double = 0.5
     var ttsPitch: Double = 1.0
@@ -86,6 +99,8 @@ extension ReaderSettings {
     private enum CodingKeys: String, CodingKey {
         case fontSize, lineSpacing, paragraphSpacing, fontFamily, themeIndex,
              marginH, marginV, pageAnimate,
+             pageTurnMode, dualColumn, firstLineIndent, letterSpacing,
+             chapterPreload, showChapterTitle, statsEnabled,
              ttsRate, ttsPitch, ttsVoiceID, ttsAutoNextChapter,
              ttsEngineID, customTTS
     }
@@ -100,6 +115,13 @@ extension ReaderSettings {
         marginH = try c.decodeIfPresent(Double.self, forKey: .marginH) ?? 20
         marginV = try c.decodeIfPresent(Double.self, forKey: .marginV) ?? 16
         pageAnimate = try c.decodeIfPresent(Bool.self, forKey: .pageAnimate) ?? true
+        pageTurnMode = try c.decodeIfPresent(Int.self, forKey: .pageTurnMode) ?? 1
+        dualColumn = try c.decodeIfPresent(Bool.self, forKey: .dualColumn) ?? false
+        firstLineIndent = try c.decodeIfPresent(Double.self, forKey: .firstLineIndent) ?? 2
+        letterSpacing = try c.decodeIfPresent(Double.self, forKey: .letterSpacing) ?? 0.2
+        chapterPreload = try c.decodeIfPresent(Int.self, forKey: .chapterPreload) ?? 1
+        showChapterTitle = try c.decodeIfPresent(Bool.self, forKey: .showChapterTitle) ?? true
+        statsEnabled = try c.decodeIfPresent(Bool.self, forKey: .statsEnabled) ?? false
         ttsRate = try c.decodeIfPresent(Double.self, forKey: .ttsRate) ?? 0.5
         ttsPitch = try c.decodeIfPresent(Double.self, forKey: .ttsPitch) ?? 1.0
         ttsVoiceID = try c.decodeIfPresent(String.self, forKey: .ttsVoiceID) ?? ""

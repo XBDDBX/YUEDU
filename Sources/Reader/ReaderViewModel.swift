@@ -28,9 +28,15 @@ final class ReaderViewModel: ObservableObject {
                             bottom: CGFloat(s.marginV) + 10, right: CGFloat(s.marginH))
     }
 
+    /// 双栏只在屏宽足够时生效，窄屏自动退回单栏
+    var columns: Int {
+        guard store.settings.dualColumn, viewSize.width > 500 else { return 1 }
+        return 2
+    }
+
     var chapterTitle: String {
         guard let book, book.chapters.indices.contains(chapterIndex) else { return "" }
-        return book.chapters[chapterIndex].title
+        return PurifyStore.shared.cleanTitle(book.chapters[chapterIndex].title)
     }
 
     var progressText: String {
@@ -62,11 +68,15 @@ final class ReaderViewModel: ObservableObject {
         do {
             let text = try await store.loadContent(for: book, chapter: book.chapters[index])
             chapterIndex = index
-            content = book.chapters[index].title + "\n\n" + text
+            let rawTitle = book.chapters[index].title
+            let title = PurifyStore.shared.cleanTitle(rawTitle)
+            content = store.settings.showChapterTitle ? (title + "\n\n" + text) : text
             pendingOffset = offset
             pageIndex = 0
             rebuildPages()
             saveProgress()
+            // 后台预取后面几章
+            store.preload(book: book, from: index)
         } catch {
             errorText = error.localizedDescription
         }
@@ -96,7 +106,7 @@ final class ReaderViewModel: ObservableObject {
         let settings = store.settings
         let attr = Paginator.attributed(content, settings: settings)
         attributed = attr
-        let newPages = Paginator.paginate(attr, size: viewSize, insets: pageInsets)
+        let newPages = Paginator.paginate(attr, size: viewSize, insets: pageInsets, columns: columns)
         pages = newPages
 
         if let off = pendingOffset {

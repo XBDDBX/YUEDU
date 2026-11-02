@@ -6,6 +6,7 @@ struct SourceListView: View {
 
     @State private var showImportURL = false
     @State private var showImporter = false
+    @State private var showImportSheet = false
     @State private var editing: BookSource?
     @State private var urlText = ""
     @State private var busy = false
@@ -85,19 +86,15 @@ struct SourceListView: View {
 
                 Section {
                     Button {
-                        Task { await importFromClipboard() }
+                        showImportSheet = true
                     } label: {
-                        Label("从剪贴板导入", systemImage: "doc.on.clipboard")
-                    }
-                    Button {
-                        showImportURL = true
-                    } label: {
-                        Label("从链接导入", systemImage: "link")
-                    }
-                    Button {
-                        showImporter = true
-                    } label: {
-                        Label("从文件导入（可多选）", systemImage: "folder")
+                        HStack {
+                            Label("导入书源", systemImage: "plus.circle.fill")
+                            Spacer()
+                            Text("链接 / 剪贴板 / 文件")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } header: {
                     Text("导入")
@@ -106,6 +103,18 @@ struct SourceListView: View {
                 }
             }
             .navigationTitle("书源")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showImportSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showImportSheet) {
+                SourceImportSheet().environmentObject(store)
+            }
             .overlay {
                 if busy {
                     ProgressView().padding(20)

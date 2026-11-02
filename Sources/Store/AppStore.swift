@@ -113,6 +113,26 @@ final class AppStore: ObservableObject {
         return added
     }
 
+    @discardableResult
+    func addSources(_ list: [BookSource], group: String = "") -> (added: Int, updated: Int) {
+        var added = 0
+        var updated = 0
+        for var s in list {
+            if !group.isEmpty { s.group = group }
+            if let i = sources.firstIndex(where: { $0.name == s.name && $0.url == s.url }) {
+                s.id = sources[i].id
+                sources[i] = s
+                updated += 1
+            } else {
+                s.order = sources.count
+                sources.append(s)
+                added += 1
+            }
+        }
+        saveSources()
+        return (added, updated)
+    }
+
     func importSources(from urlString: String) async throws -> Int {
         let data = try await SourceFetcher.data(urlString)
         return importSources(from: data)
@@ -268,20 +288,41 @@ final class AppStore: ObservableObject {
     // MARK: - 内容加载
 
     func loadContent(for book: Book, chapter: Chapter) async throws -> String {
-        if let c = cachedContent(for: chapter), !c.isEmpty { return c }
+        if let c = cachedContent(for: chapter), !c.isEmpty {
+            return PurifyStore.shared.apply(c, scope: .content)
+        }
 
         if book.isLocal {
             let c = LocalLibrary.shared.content(book: book, chapter: chapter)
             if !c.isEmpty { storeContent(c, for: chapter) }
-            return c
+            return PurifyStore.shared.apply(c, scope: .content)
         }
 
         guard let source = source(for: book.sourceID) else { throw FetchError.badURL }
         let service = SourceService(source: source)
         let text = try await service.loadContent(chapter.url)
         if text.isEmpty { throw FetchError.empty }
+        // 缓存原文，净化在读取时做，规则改了立刻生效
         storeContent(text, for: chapter)
-        return text
+        return PurifyStore.shared.apply(text, scope: .content)
+    }
+
+    /// 后台预取后续章节（按设置里的预缓存章数）
+    func preload(book: Book, from chapterIndex: Int) {
+        let count = min(max(settings.chapterPreload, 0), 5)
+        guard count > 0, !book.isLocal else { return }
+        Task { @MainActor in
+            for offset in 1...count {
+                let idx = chapterIndex + offset
+                guard book.chapters.indices.contains(idx) else { break }
+                let chapter = book.chapters[idx]
+                if cachedContent(for: chapter) != nil { continue }
+                guard let source = source(for: book.sourceID) else { break }
+                let service = SourceService(source: source)
+                guard let text = try? await service.loadContent(chapter.url), !text.isEmpty else { continue }
+                storeContent(text, for: chapter)
+            }
+        }
     }
 
     // MARK: - 提示

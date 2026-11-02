@@ -9,6 +9,7 @@ struct ReaderView: View {
     @StateObject private var vm = ReaderViewModel()
     @ObservedObject private var tts = TTSEngine.shared
     @State private var appeared = false
+    @State private var turnDirection: Int = 1
 
     private var theme: ReaderTheme { store.settings.theme }
     private var bg: Color { Color(uiColor: UIColor(hex: theme.bg)) }
@@ -22,13 +23,23 @@ struct ReaderView: View {
 
                 // 正文
                 Group {
-                    if vm.pages.indices.contains(vm.pageIndex) {
+                    if store.settings.pageTurnMode == 3 {
+                        ChapterScrollView(attributed: vm.attributed,
+                                          insets: vm.pageInsets,
+                                          bg: UIColor(hex: theme.bg),
+                                          highlight: vm.ttsHighlight,
+                                          onTap: {
+                                              withAnimation(.easeInOut(duration: 0.2)) { vm.showMenu.toggle() }
+                                          })
+                            .opacity(vm.showMenu ? 0.55 : 1)
+                    } else if vm.pages.indices.contains(vm.pageIndex) {
                         PageTextView(attributed: vm.attributed,
                                      range: vm.pages[vm.pageIndex],
                                      insets: vm.pageInsets,
-                                     highlight: vm.ttsHighlight)
+                                     highlight: vm.ttsHighlight,
+                                     columns: vm.columns)
                             .id(vm.pageIndex)
-                            .transition(.opacity)
+                            .transition(pageTransition)
                     } else if vm.loading {
                         ProgressView().tint(fg)
                     } else if let err = vm.errorText {
@@ -48,15 +59,17 @@ struct ReaderView: View {
                 .padding(0)
 
                 // 点击区
-                HStack(spacing: 0) {
-                    Color.clear.contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { vm.prevPage() } }
-                        .frame(width: geo.size.width * 0.28)
-                    Color.clear.contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { vm.showMenu.toggle() } }
-                    Color.clear.contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { vm.nextPage() } }
-                        .frame(width: geo.size.width * 0.28)
+                if store.settings.pageTurnMode != 3 {
+                    HStack(spacing: 0) {
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { turnPrev() }
+                            .frame(width: geo.size.width * 0.28)
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { vm.showMenu.toggle() } }
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { turnNext() }
+                            .frame(width: geo.size.width * 0.28)
+                    }
                 }
 
                 // 页脚
@@ -140,7 +153,13 @@ struct ReaderView: View {
                     .onEnded { value in
                         let dx = value.translation.width
                         let dy = value.translation.height
-                        guard abs(dx) > 110, abs(dx) > abs(dy) else { return }
+                        guard abs(dx) > abs(dy) else { return }
+                        // 滑动翻页模式：左右拖直接翻页
+                        if store.settings.pageTurnMode == 1, abs(dx) > 50 {
+                            if dx < 0 { turnNext() } else { turnPrev() }
+                            return
+                        }
+                        guard abs(dx) > 110 else { return }
                         vm.saveProgress()
                         TTSEngine.shared.stop()
                         dismiss()
@@ -316,5 +335,77 @@ struct ReaderView: View {
         store.settings.fontSize = v
         store.saveSettings()
         vm.relayout()
+    }
+
+    // MARK: - 翻页
+
+    private var pageTransition: AnyTransition {
+        switch store.settings.pageTurnMode {
+        case 0:
+            // 覆盖：新页从侧边盖上来，旧页不动
+            return .asymmetric(
+                insertion: .move(edge: turnDirection > 0 ? .trailing : .leading).combined(with: .opacity),
+                removal: .identity
+            )
+        case 1:
+            // 滑动：两页一起横移
+            return .asymmetric(
+                insertion: .move(edge: turnDirection > 0 ? .trailing : .leading),
+                removal: .move(edge: turnDirection > 0 ? .leading : .trailing)
+            )
+        case 2:
+            // 仿真：绕书脊做 3D 卷页
+            let anchor: UnitPoint = turnDirection > 0 ? .leading : .trailing
+            return .asymmetric(
+                insertion: .modifier(active: PageCurlModifier(progress: 1, anchor: anchor),
+                                     identity: PageCurlModifier(progress: 0, anchor: anchor)),
+                removal: .modifier(active: PageCurlModifier(progress: 1, anchor: anchor),
+                                   identity: PageCurlModifier(progress: 0, anchor: anchor))
+            )
+        case 4:
+            return .identity
+        default:
+            return .opacity
+        }
+    }
+
+    private var pageAnimation: Animation {
+        switch store.settings.pageTurnMode {
+        case 0: return .easeOut(duration: 0.22)
+        case 1: return .easeOut(duration: 0.26)
+        case 2: return .easeInOut(duration: 0.42)
+        case 4: return .linear(duration: 0.01)
+        default: return .easeInOut(duration: 0.2)
+        }
+    }
+
+    private func turnNext() {
+        guard store.settings.pageTurnMode != 3 else { return }
+        turnDirection = 1
+        withAnimation(pageAnimation) { vm.nextPage() }
+    }
+
+    private func turnPrev() {
+        guard store.settings.pageTurnMode != 3 else { return }
+        turnDirection = -1
+        withAnimation(pageAnimation) { vm.prevPage() }
+    }
+}
+
+/// 仿真翻页的 3D 卷页效果
+struct PageCurlModifier: ViewModifier {
+    var progress: Double
+    var anchor: UnitPoint
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(
+                .degrees(-82 * progress),
+                axis: (x: 0, y: 1, z: 0),
+                anchor: anchor,
+                perspective: 0.35
+            )
+            .opacity(1 - progress * 0.55)
+            .shadow(color: .black.opacity(0.22 * progress), radius: 8, x: -4)
     }
 }

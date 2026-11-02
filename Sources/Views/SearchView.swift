@@ -16,6 +16,7 @@ struct SearchView: View {
     @State private var finished = 0
     @State private var total = 0
     @State private var showErrors = false
+    @State private var showDiscover = false
 
     var body: some View {
         NavigationStack {
@@ -57,12 +58,23 @@ struct SearchView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showDiscover = true
+                    } label: {
+                        Image(systemName: "square.grid.2x2")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showErrors = true
                     } label: {
                         Image(systemName: errors.isEmpty ? "checkmark.circle" : "exclamationmark.triangle")
                     }
                     .disabled(errors.isEmpty)
                 }
+            }
+            .sheet(isPresented: $showDiscover) {
+                DiscoverView()
+                    .environmentObject(store)
             }
             .sheet(isPresented: $showErrors) {
                 NavigationStack {

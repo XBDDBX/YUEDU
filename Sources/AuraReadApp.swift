@@ -25,11 +25,11 @@ struct RootView: View {
                     .tabItem { Label("找书", systemImage: "magnifyingglass") }
                     .tag(1)
 
-                DiscoverView()
-                    .tabItem { Label("发现", systemImage: "square.grid.2x2") }
+                SourceListView()
+                    .tabItem { Label("书源", systemImage: "square.stack.3d.up") }
                     .tag(2)
 
-                SettingsView()
+                SettingsHomeView()
                     .tabItem { Label("设置", systemImage: "gearshape") }
                     .tag(3)
             }

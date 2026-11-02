@@ -3,6 +3,9 @@ import CoreText
 
 enum Paginator {
 
+    /// 双栏排版时两栏之间的间距
+    static let columnGap: CGFloat = 28
+
     static func font(for settings: ReaderSettings) -> UIFont {
         let size = CGFloat(settings.fontSize)
         switch settings.fontFamily {
@@ -27,7 +30,7 @@ enum Paginator {
         let para = NSMutableParagraphStyle()
         para.lineSpacing = CGFloat(settings.lineSpacing)
         para.paragraphSpacing = CGFloat(settings.paragraphSpacing)
-        para.firstLineHeadIndent = CGFloat(settings.fontSize) * 2
+        para.firstLineHeadIndent = CGFloat(settings.fontSize) * CGFloat(settings.firstLineIndent)
         para.headIndent = 0
         para.alignment = .justified
         para.lineBreakMode = .byWordWrapping
@@ -36,13 +39,22 @@ enum Paginator {
             .font: font(for: settings),
             .foregroundColor: UIColor(hex: theme.text),
             .paragraphStyle: para,
-            .kern: 0.2
+            .kern: CGFloat(settings.letterSpacing)
         ]
         return NSAttributedString(string: text, attributes: attrs)
     }
 
-    static func paginate(_ attr: NSAttributedString, size: CGSize, insets: UIEdgeInsets) -> [NSRange] {
-        let width = max(size.width - insets.left - insets.right, 40)
+    /// 单栏宽度（双栏时已经扣掉栏间距）
+    static func columnWidth(size: CGSize, insets: UIEdgeInsets, columns: Int) -> CGFloat {
+        let usable = size.width - insets.left - insets.right
+        guard columns > 1 else { return max(usable, 40) }
+        let gap = columnGap * CGFloat(columns - 1)
+        return max((usable - gap) / CGFloat(columns), 40)
+    }
+
+    /// 按栏分页：每一"屏"是一段连续文本，双栏时这段文本会先填满左栏再填右栏
+    static func paginate(_ attr: NSAttributedString, size: CGSize, insets: UIEdgeInsets, columns: Int = 1) -> [NSRange] {
+        let width = columnWidth(size: size, insets: insets, columns: columns)
         let height = max(size.height - insets.top - insets.bottom, 40)
         let path = CGPath(rect: CGRect(x: 0, y: 0, width: width, height: height), transform: nil)
         let framesetter = CTFramesetterCreateWithAttributedString(attr)
@@ -52,13 +64,23 @@ enum Paginator {
         var ranges: [NSRange] = []
         var start = 0
         var safety = 0
+        let perScreen = max(columns, 1)
+
         while start < total && safety < 5000 {
             safety += 1
-            let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(start, 0), path, nil)
-            let visible = CTFrameGetVisibleStringRange(frame)
-            if visible.length <= 0 { break }
-            ranges.append(NSRange(location: visible.location, length: visible.length))
-            start = visible.location + visible.length
+            var cursor = start
+            var end = start
+            for _ in 0..<perScreen {
+                if cursor >= total { break }
+                let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(cursor, 0), path, nil)
+                let visible = CTFrameGetVisibleStringRange(frame)
+                if visible.length <= 0 { break }
+                end = visible.location + visible.length
+                cursor = end
+            }
+            if end <= start { break }
+            ranges.append(NSRange(location: start, length: end - start))
+            start = end
         }
         if ranges.isEmpty { ranges = [NSRange(location: 0, length: total)] }
         return ranges
