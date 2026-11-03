@@ -10,6 +10,7 @@ struct ReaderView: View {
     @ObservedObject private var tts = TTSEngine.shared
     @State private var appeared = false
     @State private var turnDirection: Int = 1
+    @State private var sleepMinutes = 0
 
     private var theme: ReaderTheme { store.settings.theme }
     private var bg: Color { Color(uiColor: UIColor(hex: theme.bg)) }
@@ -217,8 +218,7 @@ struct ReaderView: View {
                         if tts.isSpeaking { tts.pause() }
                         else if tts.isPaused { tts.resume() }
                         else { vm.speakCurrentPage() }
-                    }
-                    toolButton("slider.horizontal.3", "设置") {
+                    }                    toolButton("slider.horizontal.3", "设置") {
                         withAnimation { vm.showSettings.toggle() }
                     }
                 }
@@ -241,20 +241,85 @@ struct ReaderView: View {
     }
 
     private var ttsBar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "waveform").foregroundStyle(.blue)
-            Text(tts.isPaused ? "已暂停" : "正在朗读 · \(tts.currentVoiceName)")
-                .font(.system(size: 12)).lineLimit(1)
-            Spacer()
-            Button {
-                tts.stop()
-            } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 18))
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 14))
+                    .foregroundStyle(settingsAccent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tts.isPaused ? "已暂停" : "正在朗读 · \(tts.currentVoiceName)")
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    if tts.chunkTotal > 0 {
+                        Text("第 \(min(tts.chunkIndex + 1, tts.chunkTotal)) / \(tts.chunkTotal) 段")
+                            .font(.system(size: 9))
+                            .foregroundStyle(sub)
+                    }
+                }
+                Spacer()
+                Button {
+                    tts.skipChunk(-1)
+                } label: {
+                    Image(systemName: "backward.end.fill").font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    if tts.isSpeaking { tts.pause() } else { tts.resume() }
+                } label: {
+                    Image(systemName: tts.isSpeaking ? "pause.fill" : "play.fill")
+                        .font(.system(size: 15))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    tts.skipChunk(1)
+                } label: {
+                    Image(systemName: "forward.end.fill").font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    tts.stop()
+                    sleepMinutes = 0
+                } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 7) {
+                Image(systemName: "timer").font(.system(size: 10)).foregroundStyle(sub)
+                ForEach(Self.sleepOptions, id: \.self) { m in
+                    Button {
+                        sleepMinutes = m
+                        tts.startSleepTimer(minutes: m)
+                    } label: {
+                        Text(m == 0 ? "关" : "\(m)分")
+                            .font(.system(size: 10, weight: sleepMinutes == m ? .semibold : .regular))
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(sleepMinutes == m ? settingsAccent.opacity(0.18) : Color.clear,
+                                        in: Capsule())
+                            .foregroundStyle(sleepMinutes == m ? settingsAccent : sub)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+                if tts.sleepRemaining > 0 {
+                    Text(sleepText)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(sub)
+                }
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 8)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private static let sleepOptions = [0, 15, 30, 60]
+
+    private var sleepText: String {
+        let m = tts.sleepRemaining / 60
+        let s = tts.sleepRemaining % 60
+        return String(format: "%02d:%02d 后停", m, s)
     }
 
     private var settingsPanel: some View {

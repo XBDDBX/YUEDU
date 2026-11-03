@@ -84,13 +84,42 @@ struct ReaderSettings: Codable, Hashable, Sendable {
     var theme: ReaderTheme { ReaderTheme.all[min(max(themeIndex, 0), ReaderTheme.all.count - 1)] }
 }
 
-/// 自定义朗读引擎：请求一个返回音频（mp3/wav）的 TTS 服务
+/// 自定义朗读引擎：请求一个返回音频（mp3/wav/JSON）的 TTS 服务
 struct CustomTTSEngine: Codable, Hashable, Identifiable {
     var id: String = UUID().uuidString
     var name: String = ""
-    var url: String = ""          // 支持 {text} / {voice} 占位
+    /// 请求地址，支持 {text} {voice} {rate} {pitch} 占位
+    var url: String = ""
     var voice: String = ""
-    var method: String = "GET"    // GET（URL 占位）或 POST（JSON body）
+    /// GET（URL 占位）或 POST（JSON body / bodyTemplate）
+    var method: String = "GET"
+    /// 额外请求头，JSON 字符串，如 {"Authorization":"Bearer xxx"}
+    var headers: String = ""
+    /// POST 时的自定义 body；留空则用内置 {"text":…,"voice":…,"rate":…}
+    var bodyTemplate: String = ""
+    /// 返回内容类型：audio（直接音频）/ url（JSON 里是音频地址）/ base64（JSON 里是 base64）
+    var responseType: String = "audio"
+    /// responseType 为 url/base64 时，音频在 JSON 里的路径，如 data.audio
+    var responsePath: String = ""
+}
+
+extension CustomTTSEngine {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, url, voice, method, headers, bodyTemplate, responseType, responsePath
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        url = try c.decodeIfPresent(String.self, forKey: .url) ?? ""
+        voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? ""
+        method = try c.decodeIfPresent(String.self, forKey: .method) ?? "GET"
+        headers = try c.decodeIfPresent(String.self, forKey: .headers) ?? ""
+        bodyTemplate = try c.decodeIfPresent(String.self, forKey: .bodyTemplate) ?? ""
+        responseType = try c.decodeIfPresent(String.self, forKey: .responseType) ?? "audio"
+        responsePath = try c.decodeIfPresent(String.self, forKey: .responsePath) ?? ""
+    }
 }
 
 // MARK: - 兼容解码：新字段缺省时用默认值，避免旧存档解码失败

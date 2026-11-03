@@ -179,11 +179,17 @@ final class ReaderViewModel: ObservableObject {
     // MARK: - 朗读
 
     func speakCurrentPage() {
-        guard pages.indices.contains(pageIndex) else { return }
-        let ns = attributed.string as NSString
-        let r = pages[pageIndex]
-        guard r.location + r.length <= ns.length else { return }
-        let text = ns.substring(with: r)
-        TTSEngine.shared.speak(text, settings: store.settings)
+        let full = attributed.string
+        TTSEngine.shared.setContext(title: book?.title ?? "", subtitle: chapterTitle)
+        if pages.indices.contains(pageIndex) {
+            let ns = full as NSString
+            let r = pages[pageIndex]
+            if r.location + r.length <= ns.length {
+                TTSEngine.shared.speak(ns.substring(with: r), settings: store.settings)
+                return
+            }
+        }
+        // 滚动模式 / 分页未就绪：整章朗读
+        TTSEngine.shared.speak(full, settings: store.settings)
     }
 }

@@ -52,6 +52,7 @@ struct SourceConfigPage: View {
 struct TTSConfigPage: View {
     @EnvironmentObject var store: AppStore
     @ObservedObject private var tts = TTSEngine.shared
+    @State private var sleepPick = 0
 
     var body: some View {
         Form {
@@ -95,10 +96,61 @@ struct TTSConfigPage: View {
                         .font(.system(size: 12, design: .monospaced))
                         .frame(width: 38)
                 }
+                HStack {
+                    Text("音调")
+                    Slider(value: Binding(
+                        get: { store.settings.ttsPitch },
+                        set: { store.settings.ttsPitch = $0; store.saveSettings() }
+                    ), in: 0.7...1.4, step: 0.05)
+                    Text(String(format: "%.2f", store.settings.ttsPitch))
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 38)
+                }
                 Toggle("读完自动下一章", isOn: Binding(
                     get: { store.settings.ttsAutoNextChapter },
                     set: { store.settings.ttsAutoNextChapter = $0; store.saveSettings() }
                 ))
+            }
+
+            Section {
+                Button {
+                    if tts.isSpeaking { tts.stop() }
+                    tts.preview("这是试听。清阅，把你想看的书读给你听。", settings: store.settings)
+                } label: {
+                    Label(tts.isSpeaking ? "停止试听" : "试听当前音色", systemImage: tts.isSpeaking ? "stop.circle" : "play.circle")
+                }
+                if tts.chunkTotal > 0 {
+                    HStack {
+                        Text("进度")
+                        Spacer()
+                        Text("\(min(tts.chunkIndex + 1, tts.chunkTotal)) / \(tts.chunkTotal) 段")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("试听")
+            }
+
+            Section {
+                Picker("定时停止", selection: Binding(
+                    get: { sleepPick },
+                    set: { sleepPick = $0; tts.startSleepTimer(minutes: $0) }
+                )) {
+                    Text("关闭").tag(0)
+                    Text("15 分钟").tag(15)
+                    Text("30 分钟").tag(30)
+                    Text("60 分钟").tag(60)
+                }
+                if tts.sleepRemaining > 0 {
+                    Text("还剩 \(tts.sleepRemaining / 60) 分 \(tts.sleepRemaining % 60) 秒")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("听书助眠")
+            } footer: {
+                Text("长文本会按句切段朗读，段与段之间自动衔接；自定义引擎会把下一段提前取好，中间不断。")
             }
 
             Section {

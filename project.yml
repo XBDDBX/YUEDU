@@ -50,6 +50,8 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        UIBackgroundModes:
+          - audio
         NSPhotoLibraryUsageDescription: 用于保存书籍封面
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
