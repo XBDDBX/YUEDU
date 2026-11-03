@@ -218,7 +218,8 @@ struct ReaderView: View {
                         if tts.isSpeaking { tts.pause() }
                         else if tts.isPaused { tts.resume() }
                         else { vm.speakCurrentPage() }
-                    }                    toolButton("slider.horizontal.3", "设置") {
+                    }
+                    toolButton("slider.horizontal.3", "设置") {
                         withAnimation { vm.showSettings.toggle() }
                     }
                 }
